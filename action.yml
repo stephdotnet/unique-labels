@@ -1,6 +1,6 @@
-name: 'The name of your action here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: 'Unique PR Labels'
+description: 'When a label is added on a PR, make sure it remains unique'
+author: 'Stephdotnet'
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
@@ -9,15 +9,14 @@ branding:
 
 # Define your inputs here.
 inputs:
-  milliseconds:
-    description: 'Your input description here'
+  token:
+    description: 'Github token with pull-requests: write permission'
     required: true
-    default: '1000'
 
 # Define your outputs here.
 outputs:
-  time:
-    description: 'Your output description here'
+  labels:
+    description: 'Labels that were synced'
 
 runs:
   using: node20

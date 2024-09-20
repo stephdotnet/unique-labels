@@ -1,5 +1,7 @@
 import * as core from '@actions/core'
-import { wait } from './wait'
+import * as github from '@actions/github'
+import { getConfig } from './config'
+import * as api from './utils/api'
 
 /**
  * The main function for the action.
@@ -7,18 +9,48 @@ import { wait } from './wait'
  */
 export async function run(): Promise<void> {
   try {
-    const ms: string = core.getInput('milliseconds')
+    const context = github.context
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+    const eventName = context.eventName
+    const repo = context.repo.repo
+    const owner = context.repo.owner
+    const eventAction = context.payload.action
+    const eventLabel = context.payload.label
+    const eventPRNumber = context.payload.number
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+    if (eventName !== 'pull_request' || eventAction !== 'labeled') {
+      core.info(`Aborted action since it's not a labeled pull request event`)
+      return
+    }
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
+    const config = getConfig({
+      repo,
+      owner
+    })
+
+    if (!config.labels.includes(eventLabel?.name)) {
+      core.info(
+        `The PR Label ${eventLabel?.name} is not configured as unique. Action will now terminate`
+      )
+      return
+    }
+
+    api.init(config)
+
+    const prs = await api.getPRsWithLabel(eventLabel.name)
+
+    for (const pr of prs) {
+      if (pr.number !== eventPRNumber) {
+        core.info(
+          `Removing label ${eventLabel.name} from PR number ${pr.number}`
+        )
+        await api.removeLabelFromPR(eventLabel.name, pr.number)
+      } else {
+        core.info(
+          `Not removing label ${eventLabel.name} from PR number ${pr.number} because it intiated event`
+        )
+      }
+    }
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
