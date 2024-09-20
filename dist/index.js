@@ -29269,7 +29269,6 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.run = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const github = __importStar(__nccwpck_require__(5438));
-// import context from './event'
 const config_1 = __nccwpck_require__(6373);
 const api = __importStar(__nccwpck_require__(4385));
 /**
@@ -29278,19 +29277,13 @@ const api = __importStar(__nccwpck_require__(4385));
  */
 async function run() {
     try {
-        // Get the label added in context info
-        const context = github.context.payload;
-        console.log(JSON.stringify(context));
-        if (context.repository === undefined) {
-            core.info(`Aborted action since repository is undefined`);
-            return;
-        }
-        const eventName = context.event_name;
-        const repo = context.repository.split('/')[1];
-        const owner = context.repository.split('/')[0];
-        const eventAction = context.event.action;
-        const eventLabel = context.event.label;
-        const eventPRNumber = context.event.number;
+        const context = github.context;
+        const eventName = context.eventName;
+        const repo = context.repo.repo;
+        const owner = context.repo.owner;
+        const eventAction = context.payload.action;
+        const eventLabel = context.payload.label;
+        const eventPRNumber = context.payload.number;
         if (eventName !== 'pull_request' || eventAction !== 'labeled') {
             core.info(`Aborted action since it's not a labeled pull request event`);
             return;
@@ -29299,13 +29292,13 @@ async function run() {
             repo,
             owner
         });
-        if (!config.labels.includes(eventLabel.name)) {
-            core.info(`${eventLabel.name} is not configured as a unique label. Action will now terminate`);
+        if (!config.labels.includes(eventLabel?.name)) {
+            core.info(`The PR Label ${eventLabel?.name} is not configured as unique. Action will now terminate`);
             return;
         }
         api.init(config);
         const prs = await api.getPRsWithLabel(eventLabel.name);
-        prs.forEach(async (pr) => {
+        for (const pr of prs) {
             if (pr.number !== eventPRNumber) {
                 core.info(`Removing label ${eventLabel.name} from PR number ${pr.number}`);
                 await api.removeLabelFromPR(eventLabel.name, pr.number);
@@ -29313,7 +29306,7 @@ async function run() {
             else {
                 core.info(`Not removing label ${eventLabel.name} from PR number ${pr.number} because it intiated event`);
             }
-        });
+        }
     }
     catch (error) {
         // Fail the workflow run if an error occurs
@@ -29372,10 +29365,10 @@ async function getPRsWithLabel(label) {
         owner: config.owner,
         repo: config.repo,
         state: 'open',
-        label: label,
+        label,
         per_page: 1
     });
-    let pr = [];
+    const pr = [];
     for await (const response of iterator) {
         pr.push(...response.data);
     }
@@ -29383,7 +29376,7 @@ async function getPRsWithLabel(label) {
 }
 exports.getPRsWithLabel = getPRsWithLabel;
 async function removeLabelFromPR(label, prNumber) {
-    octokit.rest.issues.removeLabel({
+    return octokit.rest.issues.removeLabel({
         owner: config.owner,
         repo: config.repo,
         issue_number: prNumber,
