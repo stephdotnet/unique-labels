@@ -1,0 +1,4 @@
+-e __tests__/fixtures/event.json
+-W .github/workflows/action-test.yml
+--input token=
+--input labels='["bug"]'

@@ -7,83 +7,151 @@
  */
 
 import * as core from '@actions/core'
+import * as github from '@actions/github'
 import * as main from '../src/main'
+import { Context } from '@actions/github/lib/context'
+import * as config from '../src/config'
+import * as api from '../src/utils/api'
+import pullRequests from './fixtures/pull-requests'
 
 // Mock the action's main function
 const runMock = jest.spyOn(main, 'run')
-
-// Other utilities
-const timeRegex = /^\d{2}:\d{2}:\d{2}/
+const getConfigMock: jest.SpiedFunction<typeof config.getConfig> = jest.spyOn(
+  config,
+  'getConfig'
+)
+let apiInitMock: jest.SpiedFunction<typeof api.init>
+let apiGetPRsWithLabelMock: jest.SpiedFunction<typeof api.getPRsWithLabel>
+let apiRemoveLabelFromPRMock: jest.SpiedFunction<typeof api.removeLabelFromPR>
 
 // Mock the GitHub Actions core library
-let debugMock: jest.SpiedFunction<typeof core.debug>
-let errorMock: jest.SpiedFunction<typeof core.error>
-let getInputMock: jest.SpiedFunction<typeof core.getInput>
+let infoMock: jest.SpiedFunction<typeof core.info>
 let setFailedMock: jest.SpiedFunction<typeof core.setFailed>
-let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
 
 describe('action', () => {
   beforeEach(() => {
     jest.clearAllMocks()
 
-    debugMock = jest.spyOn(core, 'debug').mockImplementation()
-    errorMock = jest.spyOn(core, 'error').mockImplementation()
-    getInputMock = jest.spyOn(core, 'getInput').mockImplementation()
+    process.env.GITHUB_EVENT_PATH = '__tests__/fixtures/event.json'
+    process.env.GITHUB_EVENT_NAME = 'pull_request'
+
+    Object.defineProperty(github, 'context', {
+      value: { ...new Context(), repo: { repo: 'test', owner: 'test' } }
+    })
+
+    jest.spyOn(core, 'debug').mockImplementation()
+    infoMock = jest.spyOn(core, 'info').mockImplementation()
+    jest.spyOn(core, 'error').mockImplementation()
+    jest.spyOn(core, 'getInput').mockImplementation()
     setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation()
-    setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation()
+    jest.spyOn(core, 'setOutput').mockImplementation()
   })
 
-  it('sets the time output', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return '500'
-        default:
-          return ''
+  it('Aborts if event name is not PR', async () => {
+    Object.defineProperty(github, 'context', {
+      value: { ...github.context, eventName: null }
+    })
+    await main.run()
+
+    expect(runMock).toHaveReturned()
+    expect(infoMock).toHaveBeenCalledWith(
+      "Aborted action since it's not a labeled pull request event"
+    )
+  })
+  it('Aborts if event action is not labeled', async () => {
+    Object.defineProperty(github, 'context', {
+      value: {
+        ...github.context,
+        payload: {
+          ...github.context.payload,
+          label: null
+        }
+      }
+    })
+    await main.run()
+
+    expect(runMock).toHaveReturned()
+    expect(infoMock).toHaveBeenCalledWith(
+      'The PR Label undefined is not configured as unique. Action will now terminate'
+    )
+  })
+
+  it('Aborts if PR labeled with label not in configuration', async () => {
+    Object.defineProperty(github, 'context', {
+      value: {
+        ...github.context,
+        payload: {
+          ...github.context.payload,
+          label: {
+            name: 'test'
+          }
+        }
       }
     })
 
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that all of the core library functions were called correctly
-    expect(debugMock).toHaveBeenNthCalledWith(1, 'Waiting 500 milliseconds ...')
-    expect(debugMock).toHaveBeenNthCalledWith(
-      2,
-      expect.stringMatching(timeRegex)
-    )
-    expect(debugMock).toHaveBeenNthCalledWith(
-      3,
-      expect.stringMatching(timeRegex)
-    )
-    expect(setOutputMock).toHaveBeenNthCalledWith(
-      1,
-      'time',
-      expect.stringMatching(timeRegex)
-    )
-    expect(errorMock).not.toHaveBeenCalled()
-  })
-
-  it('sets a failed status', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return 'this is not a number'
-        default:
-          return ''
-      }
+    getConfigMock.mockReturnValue({
+      ...config.getConfig({ repo: 'test', owner: 'test' }),
+      labels: ['bug']
     })
 
     await main.run()
-    expect(runMock).toHaveReturned()
 
-    // Verify that all of the core library functions were called correctly
-    expect(setFailedMock).toHaveBeenNthCalledWith(
-      1,
-      'milliseconds not a number'
+    expect(runMock).toHaveReturned()
+    expect(infoMock).toHaveBeenCalledWith(
+      'The PR Label test is not configured as unique. Action will now terminate'
     )
-    expect(errorMock).not.toHaveBeenCalled()
+  })
+
+  it('Removes label from the PR that did not run the workflow', async () => {
+    Object.defineProperty(github, 'context', {
+      value: {
+        ...github.context,
+        payload: {
+          ...github.context.payload,
+          label: {
+            name: 'bug'
+          }
+        }
+      }
+    })
+
+    const configResult = config.getConfig({ repo: 'test', owner: 'test' })
+    const configResultMock = {
+      ...configResult,
+      labels: ['bug']
+    }
+    getConfigMock.mockReturnValue(configResultMock)
+
+    apiInitMock = jest.spyOn(api, 'init').mockReturnValue()
+    apiGetPRsWithLabelMock = jest
+      .spyOn(api, 'getPRsWithLabel')
+      .mockReturnValue(
+        Promise.resolve(pullRequests as api.GetPRsWithLabelReturnType[])
+      )
+    apiRemoveLabelFromPRMock = jest
+      .spyOn(api, 'removeLabelFromPR')
+      .mockImplementation()
+
+    await main.run()
+
+    expect(getConfigMock).toHaveBeenCalledWith({ repo: 'test', owner: 'test' })
+    expect(apiInitMock).toHaveBeenCalledWith(configResultMock)
+    expect(apiGetPRsWithLabelMock).toHaveBeenCalledWith('bug')
+    expect(apiRemoveLabelFromPRMock).toHaveBeenCalledWith('bug', 4)
+
+    expect(infoMock).toHaveBeenCalledWith('Removing label bug from PR number 4')
+    expect(infoMock).toHaveBeenCalledWith(
+      'Not removing label bug from PR number 5 because it intiated event'
+    )
+  })
+
+  it('calls setFailed when error Thrown', async () => {
+    getConfigMock.mockImplementation(() => {
+      throw new Error()
+    })
+
+    await main.run()
+
+    expect(setFailedMock).toHaveBeenCalled()
   })
 })
