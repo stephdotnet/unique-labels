@@ -42,13 +42,14 @@ submitting the PR (jest + lint)
 ### Running the action live (using local action)
 
 - Create the `.env` file from `.env.example`
-  - Set a value for `INPUT_TOKEN` (Github PAT) 
+  - Set a value for `INPUT_TOKEN` (Github PAT)
 - Run `npm install`
 - Make the changes
 - Run `local-action run ./ src/index.ts .env` (if you're using
   https://github.com/github/local-action)
 
 ### Running the action live (using act)
+
 - Install [nektos/act](https://github.com/nektos/act)
 - Create the `.actrc` file from `.actrc.example`
   - Set a value for `token` (Github PAT)
