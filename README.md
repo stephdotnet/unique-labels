@@ -5,6 +5,15 @@
 [![CodeQL](https://github.com/stephdotnet/unique-labels/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/stephdotnet/unique-labels/actions/workflows/codeql-analysis.yml)
 [![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
 
+This action ensures that a
+[pull request label](https://docs.github.com/en/issues/using-labels-and-milestones-to-track-work/managing-labels)
+is applied to only one pull request at a time. When you apply a **unique label**
+to a PR, this action will automatically remove it from any other PR currently
+labeled with it.
+
+This can be helpful when using labels to trigger deployments or builds without
+having to manually unlabel previous PRs.
+
 ## Setting up action
 
 Create a `.github/workflows/unique-labels.yml`
@@ -25,7 +34,7 @@ jobs:
       - uses: stephdotnet/unique-labels@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          labels: ['label-one', 'label-two']
+          labels: "["label-one", "label-two"]"
 ```
 
 ## Contributing
